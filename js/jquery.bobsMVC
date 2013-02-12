@@ -1,0 +1,439 @@
+(function($){
+
+	/*
+	 * jQuery function to handle mouse tracking within a container.
+	 */
+	$.fn.trackMouse = function(options) {	  
+		var settings = $.extend({
+			trackingCursor:"move",
+			track:function(dx, dy, state){},
+			startTracking:function(state){},
+			endTracking:function(state){},
+			getState:function(selector){return {}}
+		},	options);
+		
+		var startX = 0;
+		var startY = 0;
+		var mousedown = false;
+
+
+		// Compute the change in coordinates since mouse-down
+		function doTracking(e, state) {
+			e.preventDefault();
+			var deltaX = e.pageX - startX;
+			var deltaY = e.pageY - startY;
+			settings.track(deltaX, deltaY, state);
+		}
+		
+		function doStartTracking(tracker, e, state) {
+			e.preventDefault();
+			mousedown = true;
+			startX = e.pageX;
+			startY = e.pageY;
+			settings.startTracking(state);
+			tracker.bind("mousemove", function(event) {doTracking(event, state);}).css("cursor", settings.trackingCursor);
+		}
+		
+		function doEndTracking(tracker, event, state) {
+			// No need to prevent default (mouseup or mouseleave)?
+			tracker.unbind("mousemove").css("cursor", "default");
+			if (mousedown) {
+				settings.endTracking(state);
+			}
+			mousedown=false;
+		}
+
+		return this.each(function() {
+			var state = settings.getState(this);
+			var tracker=$(this);
+			tracker.bind("mousedown",  function(event) {
+				doStartTracking(tracker, event, state);
+			}).bind("mouseleave", function(event) {
+				doEndTracking(tracker, event, state);
+			}).bind("mouseup", function(event) {
+				doEndTracking(tracker, event, state);
+			});
+
+		});
+		
+	};
+	
+	
+	// Use trackMouse to position a "cropped" image within a container.
+	$.fn.positionImage = function(options, onCompletionFn) {
+		var settings = $.extend({
+			cursor:"move",
+			top:0,
+			left:0
+		}, options);
+		var onCompletion = (onCompletionFn===undefined?function(dx,dy){}:onCompletionFn);
+		
+		return this.each(function() {
+			$(this).trackMouse({
+				trackingCursor:settings.cursor,
+				track:function(dx,dy, state) {
+					state.lastDeltaX = dx;
+					state.lastDeltaY = dy;
+					state.image.css("top", dy+state.offsetY).css("left", dx+state.offsetX);
+				},
+				endTracking:function(state) {
+					state.offsetY += state.lastDeltaY;
+					state.offsetX += state.lastDeltaX;
+					onCompletion(state.offsetX, state.offsetY);
+				},
+				getState:function(selector) {
+					var leImage = $(selector).find('img');
+					return {
+						image:leImage, 
+						offsetY:settings.top, 
+						offsetX:settings.left, 
+						lastDeltaY:0, 
+						lastDeltaX:0
+					}
+				}
+			});
+		});
+	}
+
+	// jQuery plugin for counting chacter input in a textarea.
+	$.fn.showCount = function(options) {	  
+		var settings = $.extend({
+			'limit':400
+		},	options);
+
+		// Keep counter etc. out here where it is initialized
+		// only once.  countMe is called a lot, and very quickly.
+		var counter = $(settings.countArea);
+		var countee = this;
+		function countMe() {
+			var count = settings.limit - countee.val().length;
+			counter.html(count);		
+		}
+
+		return this.each(function() {
+			// Keyup for normal typeing.
+			$(this).bind("keyup", function(e) {
+				countMe();
+				
+			// Handles user holding the key down for long time.
+			}).bind("keypress", function(e) {
+				countMe();
+				
+			// Pasting with the mouse or ^v
+			}).bind("paste", function(e) {
+				countMe();
+				
+			// Cutting with the mouse or ^x
+			}).bind("cut", function(e) {
+				countMe();
+			});		  
+		});
+	};
+
+	/*
+	 * Form verifyer: implements an ajax XML solution to verifying the contents of
+	 * a form before they are submitted for processing.
+	 * 
+	 * REQUIRED: jquery.form.js
+	 *
+	 */
+	$.fn.verifyForm = function(options, completionFn) {			
+		var settings = $.extend({
+			'msgContainer':"p.error-msg",
+			'errorTag':"error",
+			'resultTag':"result",
+			'errorMsgTag':"message",
+			'successValue':"success",
+			'errorClass':"error",
+			'successClass':"success"
+		},	options);
+		
+		var onCompletion = (completionFn===undefined?function(xml){}:completionFn);
+			
+		function formSelector(selector) {
+			return formContainer.find(selector);
+		}
+		
+		/*
+		 * Remove previous error indicators.
+		 */
+		function clearErrors(form, msgs) {
+			form.find('.'+settings.errorClass).each(function() {
+				$(this).removeClass(settings.errorClass);
+			});
+			msgs.html('');
+		}
+		
+		/*
+		 * Clear any data left behind from previous attempt at
+		 * filling out the form.
+		 */
+		function clearData(form) {
+			form.find('input').each(function() {
+				$(this).val("");
+			});
+		}
+		
+		/* 
+		 * Validation was ok so either move on to a new page or
+		 * display a success message.
+		 */
+		function successAction(xml, form, url, msgs) {
+			/* if we're staying on this page, highlight a success message */
+			if (url=="#") {
+				var msg = $(xml).find(settings.errorMsgTag).text();
+				if (msg != "") {
+					msgs.addClass(settings.successClass).html(msg);
+				}
+			}
+			/* Otherwise, bon-voyage! */
+			else {
+				form.attr("action", url).submit();
+			}
+		}
+		
+		/*
+		 * Validaiton failed. Highlight the fields in question and
+		 * dispaly an error message.
+		 */
+		function errorAction(xml, msgs) {
+			$(xml).find(settings.errorTag).each(function() {
+				var inputID = '[name="' + $(this).text() + '"]';
+				$(inputID).addClass(settings.errorClass);
+			});
+			var msg = $(xml).find(settings.errorMsgTag).text();
+			if (msg != "") {
+				/* the default class for the message should be set initially in html/css */
+				msgs.html(msg);
+			}
+		}
+
+		/*
+		 * Process the result of the field check.
+		 */
+		function verifyFields(xml, form, url, msgs) {
+			// First, do supplied action.
+			onCompletion(xml);		
+			clearErrors(form, msgs);	
+			if ($(xml).find(settings.resultTag).text() == settings.successValue) {
+				successAction(xml, form, url, msgs);
+			}
+			else {
+				errorAction(xml, msgs);
+			}
+			return true;
+		}
+		
+		return this.each(function() {
+			var form = $(this).parents("form");
+			var url = $(this).attr("href");
+			var msgContainer = form.find(settings.msgContainer);
+			if (msgContainer==null) {
+				msgContainer = $(settings.msgContainer);
+			}
+			$(this).bind("click", function(e) {
+				e.preventDefault();
+				form.ajaxSubmit({dataType:'xml',success:function(xml) {verifyFields(xml, form, url, msgContainer);}});
+			});
+			
+		});
+	};
+	
+	/*
+	 *  Prompter.
+	 *  A function to add a prompt field to an input element
+	 *  Assumptions:  A css class (default "input-prompt") exists
+	 *  and has position:absolute;
+	 */
+	$.fn.prompter = function(options) {
+		var settings = $.extend({
+			'promptClass':"input-prompt",
+			'promptID':"input-prompt-"
+		},	options);
+		
+		return this.each(function(i) {
+			// Iterate through each element, adding a unique class identifier
+			// I.E. input-prompt-i
+			// It actually kinda sucks, cause two separate invocations of the
+			// prompter method yeilds non-unique ID's.  So make sure to use
+			// promptID in different invocations.
+			$(this).addClass(settings.promptID + i);
+			
+			// Create span (with id as element's class) to contain the prompt.
+			// See css style "input-prompt" or that specified in invocation.
+			var promptSpan = $('<span class="' + settings.promptClass + '"/>');
+		    $(promptSpan).attr('id', settings.promptID + i);
+		    $(promptSpan).append($(this).attr('title'));
+		    
+		    // Hide prompt if element contains text.
+		    // Select is different from other input elements cause it
+		    // doesn't have a "val()"
+		    if ($(this).prop("tagName") == "SELECT") {
+		    	var opt = $(this).find("option:selected").html();
+		    	if (opt != null && opt != "") {
+		    		$(promptSpan).hide();
+		    	}
+		    }
+		    else if ($(this).val() != "") {
+		      $(promptSpan).hide();
+		    }
+		    
+		    // add span just before the element needing prompting.
+		    $(this).before(promptSpan);
+		    
+		    // Prompt's click method: 
+		    // hide prompt and put focus on the text element.
+		    $(promptSpan).click(function(){
+		      $(this).hide();
+		      $('.' + $(this).attr('id')).focus();
+		    });
+		    
+		    // If select, then modify the elements change method:
+		    if ($(this).prop("tagName") == "SELECT") {
+			    $(this).change(function(){
+					if (!$(this).find("option:selected").is(":first")) {
+			     		$('#' + settings.promptID + i).hide();
+					}
+			    	else {
+			    		$('#' + settings.promptID + i).css('display','inline');
+			    	}
+			    });
+		    }
+
+		    // Element's Focus method:
+		    // make sure prompt is hidden.
+		    $(this).focus(function(){
+		      $('#' + settings.promptID + i).hide();
+		    });
+		    
+		    // Element's blur method:
+		    // if element does not contain text, then show prompt.
+		    $(this).blur(function() {
+		    	var isSelect = $(this).prop("tagName") == "SELECT";
+			    if ((isSelect && $(this).find("option:selected").is(":first")) || (!isSelect && $(this).val() == '')) {
+				    $('#' + settings.promptID + i).css('display','inline');
+			    }
+		    });
+		  });
+	  };
+
+	
+	/*
+	 * Implements a fade in/out timer on sub-elements of an HTML block.
+	 * selector: selects the sub-elements to implement the fade sequencing; default ">li".
+	 * fadeTime: Time to fade in/out; default 500ms.
+	 * timeout: time between fade in/out's; default 5000ms.
+	 * pause: optional button to pause the fade in/out sequence.
+	 * play: optional button to restart the fade in/out sequence.
+	 */
+	$.fn.fader = function(method) {
+
+		// List of elements to fade in/out of.
+		var elements = [];
+		
+		// Index in element list for element currently displayed
+		var current = 0;
+		
+		// Timeout ID - for canceling the fade in/out sequence
+		var timerID;
+		
+		// To hep prevent multiple start requests setting up multiple
+		// timeouts.
+		var stopped=false;
+		
+		// Fade/timing parameters
+		var settings = {
+			fadeTime:500,
+			selector:">li",
+			play:"",
+			pause:"",
+			timeout:5000,
+			mshack:0.99,
+			beforeFade:function(prev, next) {},
+			tweenFades:function(prev, next) {},
+			afterFade:function(prev, next) {}
+		};
+		
+		// get the next element to be acted upon.
+		function whatsNext() {
+			if (current+1 > elements.length-1) return 0;
+			return current+1;
+		}
+		
+		// computes next element in list to be displayed.
+		function next() {
+			current=whatsNext();
+			return current;
+		}
+		
+		// Do the fade and set up the timer for the next fade
+		function doFade() {
+			settings.beforeFade(elements[current], elements[whatsNext()]);
+			$(elements[current]).fadeOut(this.fadeTime, function() {
+				settings.tweenFades(elements[current], elements[whatsNext()]);
+				$(elements[next()]).fadeTo(this.fadeTime, 0.99, setupNextFade);
+			});
+		}
+		
+		// Fades to the next element in the list, and sets up the timer to continue
+		// sequence until told to stop.
+		function setupNextFade() {
+			settings.afterFade(elements[current], elements[whatsNext()]);
+			timerID = setTimeout(doFade, settings.timeout);
+		}
+		
+		// Restart the fade in/out sequence, if necessary
+		function restart() {
+			if (stopped) {
+				stopped = false;
+				doFade();
+			}
+		}
+		
+		// Stop the fade in/out sequence
+		function stop() {
+			clearTimeout(timerID);
+			stopped=true;
+		}
+		
+		var methods = {
+				
+			/*
+			 * Set up the initial fade in/out sequence.
+			 * 1) Determin the set of elements to fade in/out of
+			 * 2) Hide each of the above elements
+			 * 3) bind the start/stop buttons
+			 * 4) Start the fade in/out sequence
+			 */
+			init: function(options, prepare) {
+				settings = $.extend(settings, options);
+				return this.each(function() {
+					$(this).find(settings.selector).each(function() {
+						$(this).hide();
+						elements.push(this);
+					});
+					if (settings.play != "") {
+						$(settings.play).bind("click", function(e) {e.preventDefault(); restart()});
+					}
+					if (settings.pause != "") {
+						$(settings.pause).bind("click", function(e) {e.preventDefault(); stop()});
+					}
+					$(elements[0]).fadeTo(settings.fadeTime, settings.mshack, setupNextFade);
+				})
+			}
+			
+		}
+			    
+	    // Not really necessary, as there really only is the init method.
+	    if ( methods[method] ) {
+	      return methods[ method ].apply( this, Array.prototype.slice.call( arguments, 1 ));
+	    } 
+	    else if ( typeof method === 'object' || ! method ) {
+	      return methods.init.apply( this, arguments );
+	    } 
+	    else {
+	      $.error( 'Method ' +  method + ' does not exist on jQuery.fader' );
+	    }   
+	};
+
+})( jQuery );
