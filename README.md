@@ -23,7 +23,7 @@ More complex queries includng joins and subqueries, can be easily implemented to
 			.join(new JoinExpression(orders)
 			.on(new Conjunction(new Equal(new Column(p, "productId"), new Column(o, "productId")))),
 			.join(new JoinExpression(customers)
-			.on(new Equal("o.customerId", "c.customerId");
+			.on(new Equal("o.customerId", "c.customerId"))));
 
 		Query maxQuantity = new Query()
 			.select(new Selection().add("max(quantity)"))
