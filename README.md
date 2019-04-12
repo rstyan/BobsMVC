@@ -28,7 +28,7 @@ More complex queries includng joins and subqueries, can be easily implemented to
 		Query maxQuantity = new Query()
 			.select(new Selection().add("max(quantity)"))
 			.from(o)
-			.where(new Equal("o.productId").rhs(new Column(p, "productId")));
+			.where(new Equal("o.productId", "p.productId"));
 
 		Query q = new Query()
 			.from(resources)
