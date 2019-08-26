@@ -71,7 +71,7 @@ class Binding {
                 return Timestamp((value as java.util.Date).getTime())
             } else if (value.getClass().equals(DesignType::class.java)) {
                 return (value as DesignType).value()
-            }// We support clickability common types too!
+            }
             return value
         }
 
